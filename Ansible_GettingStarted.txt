@@ -1,0 +1,159 @@
+Getting Started with Ansible - mrkips
+=====================================
+*	Ansible is an invaluable automation tool.
+*	This is a basic labdoc to help you get started with ansible.
+*	This guide uses 5 VMs - 1 control host and 4 managed hosts. The control host and 2 managed hosts are running CentOS 7.x while the other 2 managed hosts are running CentOS 6.x. 
+*	The VMs are hosted on the Google Cloud Platform.
+*	The prompt "[automan@ansctl ~]$" indicates commands executed on the ansible control host within the /home/automan/sandbox/ directory as the ansible user (automan).
+*	Command output has been omitted whenever too much.
+
+___________________________________________________________________
+# Servers/Hosts
+___________________________________________________________________
+
+ansctl	- ansible control host
+server1	- ansible managed host
+server2	- ansible managed host
+server3	- ansible managed host	
+server4	- ansible managed host
+
+___________________________________________________________________
+# Set up a user account for ansible on all hosts
+___________________________________________________________________
+
+useradd -u 5000 -c "Automation Service Account" -m -s /bin/bash automan; echo "automan:xxxxxx" | chpasswd; passwd -x -1 automan
+
+___________________________________________________________________
+# Install ansible on ansctl
+___________________________________________________________________
+
+[automan@ansctl ~]$ sudo yum install ansible
+
+___________________________________________________________________
+
+# Create key-pair on ansctl
+___________________________________________________________________
+
+[automan@ansctl ~]$ ssh-keygen -b 256 -t ecdsa
+Generating public/private ecdsa key pair.
+Enter file in which to save the key (/home/automan/.ssh/id_ecdsa): 
+Created directory '/home/automan/.ssh'.
+Enter passphrase (empty for no passphrase): 
+Enter same passphrase again: 
+Your identification has been saved in /home/automan/.ssh/id_ecdsa.
+Your public key has been saved in /home/automan/.ssh/id_ecdsa.pub.
+The key fingerprint is:
+SHA256:iG2IN8asoIMLfi9oJtNtx6OQxgr6auAYJAGBIcD9yj0 automan@ansctl
+The key's randomart image is:
++---[ECDSA 256]---+
+|@o.              |
+|+. .             |
+| .  .            |
+|.. + = .         |
+|+ o @ + S        |
+|=o B E           |
+|XoB. ..          |
+|O@.+o +          |
+|X=o.++ .         |
++----[SHA256]-----+
+
+___________________________________________________________________
+# Copy automan's public key to ansible managed hosts
+___________________________________________________________________
+
+[automan@ansctl ~]$ for i in 1 2 3 4; do ssh-copy-id server${i}; done
+
+You will be prompted to accept host keys (enter 'yes') and enter the password for the user (the password used when you set up the user account earlier) for each of the managed hosts.
+
+___________________________________________________________________
+# Ensure that the automan user has sudo privileges on all hosts
+# by adding the following to /etc/sudoers.d/automan
+___________________________________________________________________
+
+automan        ALL=(ALL)       NOPASSWD: ALL
+
+___________________________________________________________________
+# Test ansible without inventory
+___________________________________________________________________
+[automan@ansctl sandbox]$ for i in 1 2 3 4; do ansible -m ping server${i} -o; done
+server1 | SUCCESS => {"changed": false, "ping": "pong"}
+server2 | SUCCESS => {"changed": false, "ping": "pong"}
+server3 | SUCCESS => {"changed": false, "ping": "pong"}
+server4 | SUCCESS => {"changed": false, "ping": "pong"}
+
+___________________________________________________________________
+# Create ansible config for inventory
+___________________________________________________________________
+
+[automan@ansctl sandbox]$ cat ansible.cfg
+[defaults]
+inventory      = /home/automan/sandbox/inventory
+
+
+___________________________________________________________________
+# Create inventory
+___________________________________________________________________
+[automan@ansctl sandbox]$ cat inventory
+[s12]
+server[1:2]
+
+[s34]
+server3
+server4
+
+___________________________________________________________________
+# Test ansible with inventory
+___________________________________________________________________
+#
+# Ansible ping all hosts
+#
+[automan@ansctl sandbox]$ ansible all -m ping -o
+server1 | SUCCESS => {"changed": false, "ping": "pong"}
+server4 | SUCCESS => {"changed": false, "ping": "pong"}
+server2 | SUCCESS => {"changed": false, "ping": "pong"}
+server3 | SUCCESS => {"changed": false, "ping": "pong"}
+#
+################################################################
+#
+# Disable Password Authentication for ssh on all ansible managed hosts
+#
+[automan@ansctl sandbox]$ ansible all -m lineinfile -a 'path=/etc/ssh/sshd_config regexp="^PasswordAuthentication" line="PasswordAuthentication no"' -b
+server4 | SUCCESS => {
+    "backup": "",
+    "changed": true,
+    "msg": "line replaced"
+}
+server1 | SUCCESS => {
+    "backup": "",
+    "changed": true,
+    "msg": "line replaced"
+}
+server3 | SUCCESS => {
+    "backup": "",
+    "changed": true,
+    "msg": "line replaced"
+}
+server2 | SUCCESS => {
+    "backup": "",
+    "changed": true,
+    "msg": "line replaced"
+}
+
+
+[automan@ansctl sandbox]$ ansible all -m service -a 'name=sshd state=restarted' -b -o
+
+#
+################################################################
+#
+# Update all packages on all managed hosts and reboot (after 1 minute)
+#
+[automan@ansctl sandbox]$ ansible all -m yum -a 'name="*" state="latest"' -b
+
+[automan@ansctl sandbox]$ ansible all -m command -a '/sbin/shutdown -r +1' -b -o
+server4 | CHANGED | rc=0 | (stdout)  (stderr) Shutdown scheduled for Sat 2018-05-19 20:26:25 UTC, use 'shutdown -c' to cancel.
+server3 | CHANGED | rc=0 | (stdout)  (stderr) Shutdown scheduled for Sat 2018-05-19 20:26:25 UTC, use 'shutdown -c' to cancel.
+server1 | CHANGED | rc=0 | (stdout)
+server2 | CHANGED | rc=0 | (stdout)
+
+#
+################################################################
