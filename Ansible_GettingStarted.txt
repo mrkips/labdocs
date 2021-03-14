@@ -75,7 +75,7 @@ automan        ALL=(ALL)       NOPASSWD: ALL
 ___________________________________________________________________
 # Test ansible without inventory
 ___________________________________________________________________
-[automan@ansctl sandbox]$ for i in 1 2 3 4; do ansible -m ping server${i} -o; done
+[automan@ansctl sandbox]$ for i in 1 2 3 4; do ansible -i server${i}, all -m ping -o; done
 server1 | SUCCESS => {"changed": false, "ping": "pong"}
 server2 | SUCCESS => {"changed": false, "ping": "pong"}
 server3 | SUCCESS => {"changed": false, "ping": "pong"}
